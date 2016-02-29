@@ -459,7 +459,7 @@ void dprint_sequence(opendoor_t *door, char *fmt, ...)
 					printf((i == door->seqcount-1 ? "%u:udp\n" : "%u:udp,"), door->sequence[i]);
 					break;
 				case IPPROTO_TCP: /* fallthrough */
-				default: 
+				default:
 					printf((i == door->seqcount-1 ? "%u:tcp\n" : "%u:tcp,"), door->sequence[i]);
 			}
 		}
@@ -955,7 +955,7 @@ void generate_pcap_filter()
 	PMList *lp;
 	opendoor_t *door;
 	ip_literal_t *myip;
-	char *buffer = NULL;   /* temporary buffer to create the individual filter strings */ 
+	char *buffer = NULL;   /* temporary buffer to create the individual filter strings */
 	size_t bufsize = 0;    /* size of buffer */
 	char port_str[10];     /* used by snprintf to convert unsigned short --> string */
 	short head_set = 0;	   /* flag indicating if protocol head is set (i.e. "((tcp dst port") */
@@ -1140,7 +1140,7 @@ void generate_pcap_filter()
 	 * Note that we don't check if a port is included in multiple doors, we simply concatenate the individual door
 	 * filters and rely on pcap's optimization capabilities.
 	 *
-	 * Example filter for two doors with sequences 8000:tcp,4000:udp,8001:tcp,4001:udp,8002:tcp (syn) and 
+	 * Example filter for two doors with sequences 8000:tcp,4000:udp,8001:tcp,4001:udp,8002:tcp (syn) and
 	 * 1234:tcp,4567:tcp,8901:tcp (syn,ack) :
 	 * dst host the.hosts.ip.address and (
 	 *      ((tcp dst port 8000 or 8001 or 8002) and tcp[tcpflags] & tcp-syn != 0) or (udp dst port 4000 or 4001)
@@ -1745,6 +1745,538 @@ int target_strcmp(char *ip, char *target) {
 	}
 
 	return 1;
+}
+
+//
+// funcGetTimeUTC - Returns the epoch seconds value in UTC.
+//
+// Inputs:	None
+//
+// Returns:	(int) epoch seconds in UTC.
+//
+int funcGetTimeUTC(void)
+{
+	int iTime = (int)time(NULL);
+	return iTime;
+}
+
+//
+// funcLenInt - Returns the length of an integer
+//
+// Inputs:	(const pint) piI	- a pointer to the integer we require a length for
+//
+// Returns:	(int)  the length of the integer. Don't forget to add 1 if using to convert an integer to a string (null character).
+//
+int funcLenInt(const int* piI)
+{
+	int iLen = snprintf(NULL, 0, "%d", *piI);
+
+	return iLen;
+}
+
+//
+// funcLenDbl - Returns the length of a double
+//
+// Inputs:	(double) dD	- a double we require a length for
+//
+// Returns:	(int)  the length of the double. Don't forget to add 1 if using to convert a double to a string (null character).
+//
+int funcLenDbl(const double* pdD)
+{
+	int iDigits = 0;
+	double dD = *pdD;
+
+	while (dD >= 1)
+	{
+		iDigits++;
+		dD /= 10;
+	}
+
+	return iDigits;
+}
+
+//
+// funcGetTimeSlotStart - Returns the epoch second value in UTC that represents the time for seeding into the hash generator
+//
+// Inputs:	(const pint) piSecsRotate	- a pointer to the number of seconds the hash should rotate
+//
+// Returns:	(int) epoch seconds that represents the time start time slot
+//
+int funcGetTimeSlotStart(const int* piSecsRotate)
+{
+	int iTimeUTC = funcGetTimeUTC();
+
+	return ( iTimeUTC / *piSecsRotate );
+}
+
+//
+// funcInt2Char - Returns the string version of an integer
+//
+// Inputs:	(const pint)   	  piI		- a pointer to the integer to convert to a string
+// 		(const pint)   	  piLenI	- a pointer to the length of the integer to convert to a string
+//		(returned pchar)  pcI		- a pointer to a char array containing the string representation of the integer.
+//
+// Returns:	(int) status - 0 success.
+//
+void funcInt2Char(const int* piI, const int* piLenI, char* pcI)
+{
+	sprintf(pcI, "%d", *piI);
+	pcI[*piLenI] = '\0';
+}
+
+//
+// funcDbl2Char - Returns the string version of a double
+//
+// Inputs:	(const pdbl)   	  pdD		- a pointer to the double to convert to a string
+// 		(const pint)   	  piLenD	- a pointer to the length of the double to convert to a string
+//		(returned pchar)  pcD		- a pointer to a char array containing the string representation of the double.
+//
+// Returns:	(int) status - 0 success.
+//
+void funcDbl2Char(const double* pdD, const int* piLenD, char* pcD)
+{
+	sprintf(pcD, "%.*g", funcLenDbl(pdD), *pdD);
+	pcD[*piLenD] = '\0';
+}
+
+//
+// funcChar2Int - Returns the integer version of a string
+//
+// Inputs:	(const pchar)	pcI	- pointer to the char arrary to convert to an integer
+//		(returned pint)	piI	- pointer to an integer
+//
+// Returns:	(int) status - 0 success.
+//
+void funcChar2Int(const char* pcI, int* piI)
+{
+	sscanf(pcI, "%d", piI);
+}
+
+//
+// funcHex2Dbl - Converts a hex string to a double
+//
+// Inputs:	(ptr char) pcHex	- hex string to be converted
+//
+// Returns:	Nothing.
+//
+void funcHex2Dbl(const char* pcHex, double* pdHex)
+{
+	double dHex = 0;
+	int iChrMapPos;
+	_Bool bEoCA = FALSE;
+	int iI = 0;
+
+	// Loop round the hex string until the end.
+	while ( ( ( iChrMapPos = *pcHex++ ) != '\0') || ( bEoCA == FALSE ) )
+	{
+		int iJ = 0;
+
+		// Loop round the map to hex compared with the current character in the hex string.
+		while (1)
+		{
+			// If we reach the end of the map to hex, it is not a valid hex string - return an error.
+			if (gcMapHex[iJ] == '\0')
+			{
+				if (iI == 0)
+				{
+					printf("ERROR! funcHex2Dbl() - not a valid hex string: \n%s\n", pcHex);
+					dHex = ERR_INVALID_HEX;
+				}
+
+				bEoCA = TRUE;
+				break;
+			}
+
+			// If we find the character in the map to hex, exit out of loop.
+			if (gcMapHex[iJ] == iChrMapPos) break;
+			// Otherwise increment J and loop.
+			iJ++;
+		}
+
+		if (bEoCA == TRUE) break;
+
+		// If the hex numeric value is >= 16, it was a capital so subtract 6 to get an unsigned case value.
+		int iHexMax = 16;
+		if (iJ >= iHexMax) iJ -= 6;
+
+		// Multiply the double by 16 (max hex numeric).
+		if (dHex <= DBL_MAX / iHexMax) dHex *= iHexMax;
+		else
+		{
+			printf("ERROR! funcHex2Dbl() would have experienced a double overflow\n");
+			bEoCA = TRUE;
+			dHex = ERR_OVERFLOW;
+			break;
+		}
+
+		// Add the hex numeric value to the double.
+		dHex += iJ;
+		iI++;
+	}
+
+	*pdHex = dHex;
+}
+
+//
+// funcHex2Int - Converts a hex string to an integer
+//
+// Inputs:	(ptr char)	pcHex	- hex string to be converted
+//
+// Returns:	Nothing.
+//
+void funcHex2Int(const char* pcHex, int* piHex)
+{
+	int iHex = 0;
+	int iChrMapPos;
+	_Bool bEoCA = FALSE;
+	int iI = 0;
+
+
+	// Loop round the hex string until the end.
+	while ( ( ( iChrMapPos = *pcHex++ ) != '\0') || ( bEoCA == FALSE ) )
+	{
+		int iJ = 0;
+
+		// Loop round the map to hex compared with the current character in the hex string.
+		while (1)
+		{
+			// If we reach the end of the map to hex, it is not a valid hex string - return an error.
+			if (gcMapHex[iJ] == '\0')
+			{
+				if (iI == 0)
+				{
+					printf("ERROR! funcHex2Int() - not a valid hex string: \n%s\n", pcHex);
+					iHex = ERR_INVALID_HEX;
+				}
+
+				bEoCA = TRUE;
+				break;
+			}
+
+			// If we find the character in the map to hex, exit out of loop.
+			if (gcMapHex[iJ] == iChrMapPos) break;
+			// Otherwise increment J and loop.
+			iJ++;
+		}
+
+		if (bEoCA == TRUE) break;
+
+		// If the hex numeric value is >= 16, it was a capital so subtract 6 to get an unsigned case value.
+		int iHexMax = 16;
+		if (iJ >= iHexMax) iJ -= 6;
+
+		// Multiply the double by 16 (max hex numeric).
+		if (iHex <= INT_MAX / iHexMax) iHex *= iHexMax;
+		else
+		{
+			printf("ERROR! funcHex2Int() would have experienced an integer overflow\n");
+			bEoCA = TRUE;
+			iHex = ERR_OVERFLOW;
+			break;
+		}
+
+		// Add the hex numeric value to the int.
+		iHex += iJ;
+		iI++;
+	}
+
+	*piHex = iHex;
+}
+
+//
+// funcGenSHA512 - Returns the SHA512 hex hash of the plaintext passed to it.
+//
+// Inputs:	(pchar)          pcPlain	- the plain text char arrary to be hashed - can't be a constant due to SHA512_Update constructor not being a const.
+//		(returned pchar) pcHexFull	- the hex hash of the plain text.
+//
+// Returns:	Nothing.
+//
+void funcGenSHA512(char* pcPlain, char* pcHexFull)
+{
+	const size_t sztPlain = strlen(pcPlain);
+	SHA512_CTX ctxSHA512;
+
+	// char array to hold the digest
+	unsigned char ucDigest[giDigestLen];
+
+	// generate the digest
+	SHA512_Init(&ctxSHA512);
+	SHA512_Update(&ctxSHA512, pcPlain, sztPlain);
+	SHA512_Final(ucDigest, &ctxSHA512);
+
+	int iI;
+	char* pcHexInternal;
+	unsigned char* pucDigest;
+
+	pucDigest = ucDigest;
+	pcHexFull[0] = '\0';
+
+	for (iI = 0, pcHexInternal = pcHexFull; iI < giDigestLen; iI++)
+	{
+		*pcHexInternal++ = gcMapHex[(*pucDigest >> 4) & 0x0f];
+		*pcHexInternal++ = gcMapHex[(*pucDigest++   ) & 0x0f];
+	}
+
+	*pcHexInternal = '\0';
+}
+
+//
+// funcUpdateInvalidPort - Verifies if the port is within the prescribed valid range and if not,
+//			   use the out of range hash to generate a new random port within the valid range.
+//
+// Inputs:	(const pint)	piPortMin	- pointer to the integer representing the minimum port in the range
+//		(const pint)	piPortMax	- pointer to the integer representing the maximum port in the range
+//		(const pchar)	pcHashOOR	- pointer to a hash to be used for determining the new random port if piPort is determined to be out of range
+//		(const pint)    piInitHashPos	- pointer to the initial point in the out of range hash to start deriving ports
+//		(returned pint)	piPort		- pointer to the port to be checked and updated if necessary. Original is not changed if valid.
+//
+int funcUpdateInvalidPort(const int* piPortMin, const int* piPortMax, const char* pcHashOOR, int* piInitHashPos, int* piPort)
+{
+	if ( (*piPort < *piPortMin) || (*piPort > *piPortMax) )
+	{
+		int iPortDiff = *piPortMax - *piPortMin;
+		int iLenPortDiff = funcLenInt(&iPortDiff);
+		int iI;
+		int iaPortDiff[iLenPortDiff];
+
+		for (iI = (iLenPortDiff - 1); iI >= 0; iI--, iPortDiff /= 10)
+		{
+			iaPortDiff[iI] = iPortDiff % 10;
+		}
+
+		int iPort = 0;
+
+		for (iI = 0; iI < iLenPortDiff; iI++)
+		{
+			// We add one to the value of the current digit to ensure the divisor in the MOD calculation below
+			// is not zero.
+			int iDiffVal = iaPortDiff[iI] + 1;
+
+			int iLenOffset = 1;
+
+			char cOffset[iLenOffset + 1];
+			bzero(cOffset, iLenOffset + 1);
+			strncpy(cOffset, pcHashOOR+( strlen(pcHashOOR) + *piInitHashPos ), 1);
+			cOffset[iLenOffset] = '\0';
+
+			int iOffset = 0;
+			funcHex2Int(cOffset, &iOffset);
+			if (iOffset < 0) return iOffset;
+
+			bzero(cOffset, iLenOffset + 1);
+
+			// Generate the random digit for port at position iI
+			int iMod = iOffset % iDiffVal;
+
+			// Update the port number with the new random digit
+			iPort = (10 * iPort) + iMod;
+
+			// Move the initial hash position back one character
+			*piInitHashPos -= iLenOffset;
+		}
+
+		// Add the minimum port to the random port generated
+		iPort += *piPortMin;
+		*piPort = iPort;
+	}
+
+	return 0;
+}
+
+//
+// funcParseDbl2OTP - Parses the ul list of all ports and verifies if the port in the ulng is valid and if not
+//		      generate a random port based on cHashOOR that is in range.
+//
+// Inputs:	(const pdbl)            pdOTP		- pointer to a double representing the OTPs
+//		(const pchar)           pcHashOOR	- pointer to a hash to be used for determining random ports for out of range ports in the OTP
+//		(const pint)            piNumPorts	- pointer to a number of ports to be generated
+//		(const pint)            piInitHashPos	- pointer to the initial point in the out of range hash to start deriving ports
+//		(const pint)            piPortMin	- pointer to the first port in the valid range for ports
+//		(const pint)            piPortMax	- pointer to the last port in the valid range for ports
+//		(const pint)            piProto		- pointer to the integer indicating what protocol or if dynamic protocols are enabled
+//		(const pint)            piProtoFlags	- pointer to the integer indicating what protocol flags or if dynamic protocol flags are enabled
+//		(returned ptDoorPorta)  ptpdaPorts	- pointer of typedef tDoorPort (struct of a port)
+//
+int funcParseDbl2OTP(const double* pdOTP, const char* pcHashOOR, const int* piNumPorts, const int* piInitHashPos, const int* piPortMin, const int* piPortMax, const int* piProto, const int* piProtoFlags, tDoorPort* ptpdaPorts)
+{
+	int iI;
+	int iLenD = funcLenDbl(pdOTP);
+	char cOTP[iLenD];
+	bzero(cOTP, iLenD);
+
+	int iLenSingleOTP = LEN_SINGLE_OTP;
+
+	if (*piProto >= 0) iLenSingleOTP -= LEN_PROTO;
+	if (*piProtoFlags >= 0) iLenSingleOTP -= LEN_PROTO_FLAGS;
+
+	funcDbl2Char(pdOTP, &iLenD, cOTP);
+
+	int iInitOORHashPos = *piInitHashPos;
+
+	for (iI = 0; iI < *piNumPorts; iI++)
+	{
+		// Retrieve the protocol, protocol flags and port from the OTP double.
+		char cSingleOTP[iLenSingleOTP + 1];
+		bzero(cSingleOTP, iLenSingleOTP + 1);
+
+		strncpy(cSingleOTP, cOTP+(iI * iLenSingleOTP), iLenSingleOTP);
+		cSingleOTP[iLenSingleOTP] = '\0';
+
+		char cPort[LEN_PORT + 1];
+		char cProto[LEN_PROTO + 1];
+		char cProtoFlags[LEN_PROTO_FLAGS + 1];
+		bzero(cPort, LEN_PORT + 1);
+		bzero(cProto, LEN_PROTO + 1);
+		bzero(cProtoFlags, LEN_PROTO_FLAGS + 1);
+
+		int iStartPos = 0;
+
+		if (*piProto < 0)
+		{
+			strncpy(cProto, cSingleOTP+iStartPos, LEN_PROTO);
+			cProto[LEN_PROTO] = '\0';
+			iStartPos += LEN_PROTO;
+		}
+
+		if (*piProtoFlags < 0)
+		{
+			strncpy(cProtoFlags, cSingleOTP+iStartPos, LEN_PROTO_FLAGS);
+			cProtoFlags[LEN_PROTO_FLAGS] = '\0';
+			iStartPos += LEN_PROTO_FLAGS;
+		}
+
+		strncpy(cPort, cSingleOTP+iStartPos, LEN_PORT);
+		cPort[LEN_PORT] = '\0';
+
+		int iSingleOTP;
+		funcChar2Int(cSingleOTP, &iSingleOTP);
+		bzero(cSingleOTP, iLenSingleOTP);
+
+		int iPort = 0;
+		int iProtoRaw = 0;
+		int iProtoFlagsRaw = 0;
+		funcChar2Int(cPort, &iPort);
+		funcChar2Int(cProto, &iProtoRaw);
+		funcChar2Int(cProtoFlags, &iProtoFlagsRaw);
+
+		int iProto = iProtoRaw % KNOCK_SUPP_PROTOS;
+		int iProtoFlags = 0;
+		int iPFMod = 1;
+
+		if (iProto == KNOCK_PROTO_TCP) iPFMod = FLAG_SUPP_TCP;
+		else if (iProto == KNOCK_PROTO_ICMP) iPFMod = FLAG_SUPP_ICMP;
+
+		iProtoFlags = iProtoFlagsRaw % iPFMod;
+
+		// Now check the port validity - update it and add to the struct
+		int iRet = funcUpdateInvalidPort(piPortMin, piPortMax, pcHashOOR, &iInitOORHashPos, &iPort);
+		if (iRet < 0) return iRet;
+
+		ptpdaPorts[iI].usPort = iPort;
+		ptpdaPorts[iI].usProto = iProto;
+		ptpdaPorts[iI].usProtoFlags = iProtoFlags;
+	}
+
+	return 0;
+}
+
+//
+// funcGenOTP - Generates the list of one time ports
+//
+// Inputs:	(const pchar)      pcHashPasswd		- pointer to already hashed passord to use in the hash generation (as this should be done one time at configuration read)
+//		(const pint)       piNumPorts		- pointer to the number of ports to be generated
+//		(const pint)       piOTPRotate		- pointer to the port generation rotation time in seconds
+//		(const pint)       piInitHashPos	- pointer to the initial point in hash to start deriving ports
+//		(const pint)       piPortMin		- pointer to the first port in the valid range
+//		(const pint)       piPortMax		- pointer to the last port in the valid range
+//		(const pint)       piProto		- pointer to the integer indicating what protocol or if dynamic protocols are enabled
+//		(const pint)       piProtoFlags		- pointer to the integer indicating what protocol flags or if dynamic protocol flags are enabled
+//		(returned ptdparr) ptdpaPorts		- pointer containing the tDoorPort array of OTPs.
+//
+// Returns:	(int) status 0 - success
+//
+int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTPRotate, const int* piInitHashPos, const int* piPortMin, const int* piPortMax, const int* piProto, const int* piProtoFlags, tDoorPort* ptdpaPorts)
+{
+	int iTimeSlotStart = funcGetTimeSlotStart(piOTPRotate);
+	int iLenTimeSlotStart = funcLenInt(&iTimeSlotStart);
+	char cTimeSlotStart[iLenTimeSlotStart + 1];
+	bzero (cTimeSlotStart, sizeof(cTimeSlotStart));
+	funcInt2Char(&iTimeSlotStart, &iLenTimeSlotStart, cTimeSlotStart);
+
+	char cHashTimeSlotStart[giDigestHexLen];
+	bzero(cHashTimeSlotStart, giDigestHexLen);
+
+	funcGenSHA512(cTimeSlotStart, cHashTimeSlotStart);
+	bzero(cTimeSlotStart, sizeof(cTimeSlotStart));
+
+	// Subtract one from the length because itself includes room for a null character and given we are doubling the size we don't need two nulls!
+	int iLenConcat = (giDigestHexLen * 2) - 1;
+	char cHashConcat[iLenConcat];
+	bzero(cHashConcat, iLenConcat);
+
+	strncpy(cHashConcat, pcHashPasswd, giDigestHexLen);
+	strncat(cHashConcat, cHashTimeSlotStart, giDigestHexLen);
+	cHashConcat[iLenConcat - 1] = '\0';
+
+	bzero(cHashTimeSlotStart, giDigestHexLen);
+
+	char cHashOTPInit[giDigestHexLen];
+	bzero(cHashOTPInit, giDigestHexLen);
+
+	funcGenSHA512(cHashConcat, cHashOTPInit);
+	bzero(cHashConcat, sizeof(cHashConcat));
+
+	// Get the starting position integer to know where to randomly pick part of the OTP hash to be used in OOR generation.
+	int iLenOTPStartPos = 2;
+	char cOTPStartPos[iLenOTPStartPos];
+	bzero(cOTPStartPos, iLenOTPStartPos);
+
+	strncpy(cOTPStartPos, cHashOTPInit+(giDigestLen + *piInitHashPos), 1);
+	cOTPStartPos[iLenOTPStartPos - 1] = '\0';
+
+	int iOTPStartPos = 0;
+	funcHex2Int(cOTPStartPos, &iOTPStartPos);
+	if (iOTPStartPos < 0) return iOTPStartPos;
+
+	bzero(cOTPStartPos, iLenOTPStartPos);
+	iLenOTPStartPos = 0;
+
+	// Using the starting position integer above, retrieve the part of the hash to be used in OTP generation.
+	int iLenOTPHash = (*piNumPorts * 6) + 1;
+	char cHashOTP[iLenOTPHash];
+	bzero(cHashOTP, iLenOTPHash);
+
+	strncpy(cHashOTP, cHashOTPInit+iOTPStartPos, iLenOTPHash);
+	cHashOTP[iLenOTPHash - 1] = '\0';
+
+	// From the right most side of the hash, retrieve the a large enough chunk to be used in randomly generating new ports for those which were found to be OOR
+	int iLenPorts = (*piNumPorts * 5) + 1;
+	char cHashOOR[iLenPorts];
+	bzero(cHashOOR, iLenPorts);
+
+	char cHashOTPInit2[giDigestHexLen];
+	bzero(cHashOTPInit2, giDigestHexLen);
+	strncpy(cHashOTPInit2, cHashOTPInit+0, giDigestHexLen);
+	cHashOTPInit2[giDigestHexLen] = '\0';
+
+	strncpy(cHashOOR, cHashOTPInit2+( giDigestHexLen + ( ( *piInitHashPos - ( iLenPorts - 1 ) ) - 1 ) ), iLenPorts);
+	cHashOOR[iLenPorts - 1] = '\0';
+
+	// Empty the hash as we don't need it anymore
+	bzero(cHashOTPInit, sizeof(cHashOTPInit));
+
+	// Now need to convert the hex string to a double
+	double dOTP;
+	funcHex2Dbl(cHashOTP, &dOTP);
+	if (dOTP < 0) return (int) dOTP;
+
+	// Empty the hash as we don't need it anymore
+	bzero(cHashOTP, sizeof(cHashOTP));
+
+	int iRet = funcParseDbl2OTP(&dOTP, cHashOOR, piNumPorts, piInitHashPos, piPortMin, piPortMax, piProto, piProtoFlags, ptdpaPorts);
+	if (iRet < 0) return iRet;
+
+	return 0;
 }
 
 /* vim: set ts=2 sw=2 noet: */
