@@ -33,6 +33,7 @@
 #include <getopt.h>
 #include <ifaddrs.h>
 #include <limits.h>
+#include <math.h>
 #include <netdb.h>
 #include <pcap.h>
 #include <signal.h>
@@ -75,6 +76,7 @@ static char version[] = "0.8.0";
 #define ERR_INVALID_HEX		-2
 
 // Values for describing various protocol flags
+#define FLAG_ENC_BASE		2
 #define FLAG_SUPP_TCP		6
 #define FLAG_SUPP_ICMP		7
 #define FLAG_TCP_SYN		1
@@ -2173,8 +2175,8 @@ int funcParseDbl2OTP(const double* pdOTP, const char* pcHashOOR, const int* piNu
 		if (iRet < 0) return iRet;
 
 		ptpdaPorts[iI].usPort = iPort;
-		ptpdaPorts[iI].usProto = iProto;
-		ptpdaPorts[iI].usProtoFlags = iProtoFlags;
+		ptpdaPorts[iI].usProto = (int) pow(FLAG_ENC_BASE, iProto);
+		ptpdaPorts[iI].usProtoFlags = (int) pow(FLAG_ENC_BASE, iProtoFlags);
 	}
 
 	return 0;
