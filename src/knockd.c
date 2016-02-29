@@ -26,35 +26,41 @@
 #define daemon deprecated_in_osx_10_5_and_up
 #endif
 
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <float.h>
+#include <getopt.h>
+#include <ifaddrs.h>
+#include <limits.h>
+#include <netdb.h>
+#include <pcap.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
-#include <unistd.h>
-#include <signal.h>
-#include <time.h>
-#include <ctype.h>
 #include <string.h>
-#include <fcntl.h>
-#include <limits.h>
-#include <sys/socket.h>
+#include <syslog.h>
+#include <time.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <net/if.h>
 #include <netinet/in_systm.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <netinet/ip_icmp.h>
-#include <net/if.h>
 #include <netinet/if_ether.h>
+#include <openssl/bio.h>
+#include <openssl/buffer.h>
+#include <openssl/evp.h>
+#include <openssl/sha.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/ioctl.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <ifaddrs.h>
-#include <getopt.h>
-#include <syslog.h>
-#include <pcap.h>
-#include <errno.h>
 #include "list.h"
 
 #if __APPLE__
@@ -62,11 +68,50 @@
 extern int daemon(int, int);
 #endif
 
-static char version[] = "0.7.8";
+static char version[] = "0.8.0";
 
-#define SEQ_TIMEOUT 25 /* default knock timeout in seconds */
-#define CMD_TIMEOUT 10 /* default timeout in seconds between start and stop commands */
-#define SEQ_MAX     32 /* maximum number of ports in a knock sequence */
+// Error return codes
+#define ERR_OVERFLOW		-1
+#define ERR_INVALID_HEX		-2
+
+// Values for describing various protocol flags
+#define FLAG_SUPP_TCP		6
+#define FLAG_SUPP_ICMP		7
+#define FLAG_TCP_SYN		1
+#define FLAG_TCP_ACK		2
+#define FLAG_TCP_PSH		4
+#define FLAG_TCP_URG		8
+#define FLAG_TCP_FIN		16
+#define FLAG_TCP_RST		32
+#define FLAG_ICMP_ECHO		1
+#define FLAG_ICMP_REPLY		2
+#define FLAG_ICMP_DESTUNREACH	4
+#define FLAG_ICMP_REDIRECT	8
+#define FLAG_ICMP_TIMEEXCEED	16
+#define FLAG_ICMP_TSTAMP	32
+#define FLAG_ICMP_TSTAMPREPLY	64
+
+#define LEN_PROTO		1
+#define LEN_PROTO_FLAGS		1
+#define LEN_PORT		5
+#define LEN_SINGLE_OTP		7
+
+// Total of supported protocols (i.e. those defined >= 0)
+#define KNOCK_SUPP_PROTOS	3
+#define KNOCK_PROTO_DYN		-1
+#define KNOCK_PROTO_TCP		0
+#define KNOCK_PROTO_UDP		1
+#define KNOCK_PROTO_ICMP	2
+
+// Global constants
+const int  TRUE  = 1;
+const int  FALSE = 0;
+const int  giDigestLen = SHA512_DIGEST_LENGTH;
+const char gcMapHex[] = "0123456789abcdefABCDEF";
+
+#define SEQ_TIMEOUT		25 /* default knock timeout in seconds */
+#define CMD_TIMEOUT		10 /* default timeout in seconds between start and stop commands */
+#define SEQ_MAX			32 /* maximum number of ports in a knock sequence */
 
 typedef enum _flag_stat {
 	DONT_CARE,  /* 0 */
@@ -74,6 +119,17 @@ typedef enum _flag_stat {
 	NOT_SET     /* 2 */
 } flag_stat;
 
+// Open Door port (singular)
+typedef struct doorPort
+{
+        unsigned short usPort;
+        unsigned short usProto;
+        unsigned short usProtoFlags;
+} tDoorPort;
+
+//
+// TO-DO: Add the singular open door port struct to this struct
+//
 /* knock/event tuples */
 typedef struct opendoor {
 	char name[128];
@@ -135,10 +191,20 @@ size_t parse_cmd(char *dest, size_t size, const char *command, const char *src);
 int exec_cmd(char *command, char *name);
 void sniff(u_char *arg, const struct pcap_pkthdr *hdr, const u_char *packet);
 int target_strcmp(char *ip, char *target);
+int funcGetTimeUTC(void);
+int funcGetTimeSlotStart(const int* piSecsRotate);
+int funcLenDbl(const double* pdD);
+int funcLenInt(const int* piI);
+void funcInt2Char(const int* piI, const int* piLenI, char* pcI);
+void funcDbl2Char(const double* pdD, const int* piLenD, char* pcD);
+void funcChar2Int(const char* pcI, int* piI);
+void funcHex2Dbl(const char* pcHex, double* pdHex);
+void funcHex2Int(const char* pcHex, int* piHex);
+void funcGenSHA512(char* pcPlain, char* pcHexFull);
+int funcUpdateInvalidPort(const int* piPortMin, const int* piPortMax, const char* pcHashOOR, int* piInitHashPos, int* piPort);
+int funcParseDbl2OTP(const double* pdOTP, const char* pcHashOOR, const int* piNumPorts, const int* piInitHashPos, const int* piPortMin, const int* piPortMax, const int* piProto, const int* piProtoFlags, tDoorPort* ptpdaPorts);
+int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTPRotate, const int* piInitHashPos, const int* piPortMin, const int* piPortMax, const int* piProto, const int* piProtoFlags, tDoorPort* ptdpaPorts);
 
-pcap_t *cap = NULL;
-FILE *logfd = NULL;
-int lltype = -1;
 /* list of IP addresses for given interface
  */
 typedef struct ip_literal {
@@ -147,6 +213,8 @@ typedef struct ip_literal {
 } ip_literal_t;
 ip_literal_t *myips = NULL;
 
+// Global variables
+int  giDigestHexLen;
 int  o_usesyslog = 0;
 int  o_verbose   = 0;
 int  o_debug     = 0;
@@ -156,9 +224,13 @@ char o_int[32]           = "";		/* default (eth0) is set after parseconfig() */
 char o_cfg[PATH_MAX]     = "/etc/knockd.conf";
 char o_pidfile[PATH_MAX] = "/var/run/knockd.pid";
 char o_logfile[PATH_MAX] = "";
+int  lltype = -1;
+pcap_t *cap = NULL;
+FILE *logfd = NULL;
 
 int main(int argc, char **argv)
 {
+	giDigestHexLen = (giDigestLen * 2) + 1;
 	struct ifaddrs *ifaddr, *ifa;
 	ip_literal_t *myip;
 	char pcapErr[PCAP_ERRBUF_SIZE] = "";
@@ -178,7 +250,7 @@ int main(int argc, char **argv)
 		{"version",   no_argument,       0, 'V'},
 		{0, 0, 0, 0}
 	};
-	
+
 	while((opt = getopt_long(argc, argv, "vDdli:c:p:g:hV", opts, &optidx))) {
 		if(opt < 0) {
 			break;
