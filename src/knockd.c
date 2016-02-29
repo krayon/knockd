@@ -607,6 +607,9 @@ char* trim(char *str)
 	return str;
 }
 
+//
+// TODO: Add features to support dynamic port configs
+//
 /* Parse a config file
  */
 int parseconfig(char *configfile)
