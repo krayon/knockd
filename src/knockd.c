@@ -1775,12 +1775,12 @@ int funcGetTimeUTC(void)
 int funcLenInt(const int* piI)
 {
 	int iLen = snprintf(NULL, 0, "%d", *piI);
-
 	return iLen;
 }
 
 //
 // funcLenDbl - Returns the length of a double
+//		Need to do it this way as snprintf truncates digits in the way achieved in funcLenInt.
 //
 // Inputs:	(double) dD	- a double we require a length for
 //
@@ -1810,7 +1810,6 @@ int funcLenDbl(const double* pdD)
 int funcGetTimeSlotStart(const int* piSecsRotate)
 {
 	int iTimeUTC = funcGetTimeUTC();
-
 	return ( iTimeUTC / *piSecsRotate );
 }
 
@@ -1871,7 +1870,7 @@ void funcHex2Dbl(const char* pcHex, double* pdHex)
 	_Bool bEoCA = FALSE;
 	int iI = 0;
 
-	// Loop round the hex string until the end.
+	// Loop round the hex string until the end or until an error is detected.
 	while ( ( ( iChrMapPos = *pcHex++ ) != '\0') || ( bEoCA == FALSE ) )
 	{
 		int iJ = 0;
@@ -1879,15 +1878,17 @@ void funcHex2Dbl(const char* pcHex, double* pdHex)
 		// Loop round the map to hex compared with the current character in the hex string.
 		while (1)
 		{
-			// If we reach the end of the map to hex, it is not a valid hex string - return an error.
+			// If we reach the end of the map to hex....
 			if (gcMapHex[iJ] == '\0')
 			{
+				// And it is not a valid hex string (we're at charcter position 0), return an error.
 				if (iI == 0)
 				{
 					printf("ERROR! funcHex2Dbl() - not a valid hex string: \n%s\n", pcHex);
 					dHex = ERR_INVALID_HEX;
 				}
 
+				// Set error flags and break.
 				bEoCA = TRUE;
 				break;
 			}
@@ -1898,16 +1899,18 @@ void funcHex2Dbl(const char* pcHex, double* pdHex)
 			iJ++;
 		}
 
+		// Did we find an error - then break out the loop otherwise you will go past end of the char array.
 		if (bEoCA == TRUE) break;
 
 		// If the hex numeric value is >= 16, it was a capital so subtract 6 to get an unsigned case value.
 		int iHexMax = 16;
 		if (iJ >= iHexMax) iJ -= 6;
 
-		// Multiply the double by 16 (max hex numeric).
+		// If we won't overflow a double max, multiply the double by 16 (max hex numeric).
 		if (dHex <= DBL_MAX / iHexMax) dHex *= iHexMax;
 		else
 		{
+			// Error out as a double overflow would have occurred.
 			printf("ERROR! funcHex2Dbl() would have experienced a double overflow\n");
 			bEoCA = TRUE;
 			dHex = ERR_OVERFLOW;
@@ -1919,6 +1922,7 @@ void funcHex2Dbl(const char* pcHex, double* pdHex)
 		iI++;
 	}
 
+	// Set the pointer value to the double value (to be used by the calling function).
 	*pdHex = dHex;
 }
 
@@ -1937,7 +1941,7 @@ void funcHex2Int(const char* pcHex, int* piHex)
 	int iI = 0;
 
 
-	// Loop round the hex string until the end.
+	// Loop round the hex string until the end or until an error is detected.
 	while ( ( ( iChrMapPos = *pcHex++ ) != '\0') || ( bEoCA == FALSE ) )
 	{
 		int iJ = 0;
@@ -1948,12 +1952,14 @@ void funcHex2Int(const char* pcHex, int* piHex)
 			// If we reach the end of the map to hex, it is not a valid hex string - return an error.
 			if (gcMapHex[iJ] == '\0')
 			{
+				// And it is not a valid hex string (we're at charcter position 0), return an error.
 				if (iI == 0)
 				{
 					printf("ERROR! funcHex2Int() - not a valid hex string: \n%s\n", pcHex);
 					iHex = ERR_INVALID_HEX;
 				}
 
+				// Set error flags and break.
 				bEoCA = TRUE;
 				break;
 			}
@@ -1964,16 +1970,18 @@ void funcHex2Int(const char* pcHex, int* piHex)
 			iJ++;
 		}
 
+		// Did we find an error - then break out the loop otherwise you will go past end of the char array.
 		if (bEoCA == TRUE) break;
 
 		// If the hex numeric value is >= 16, it was a capital so subtract 6 to get an unsigned case value.
 		int iHexMax = 16;
 		if (iJ >= iHexMax) iJ -= 6;
 
-		// Multiply the double by 16 (max hex numeric).
+		// If we won't overflow an integer max, multiply the double by 16 (max hex numeric).
 		if (iHex <= INT_MAX / iHexMax) iHex *= iHexMax;
 		else
 		{
+			// Error out as an integer overflow would have occurred.
 			printf("ERROR! funcHex2Int() would have experienced an integer overflow\n");
 			bEoCA = TRUE;
 			iHex = ERR_OVERFLOW;
@@ -1985,6 +1993,7 @@ void funcHex2Int(const char* pcHex, int* piHex)
 		iI++;
 	}
 
+	// Set the pointer value to the integer value (to be used by the calling function).
 	*piHex = iHex;
 }
 
@@ -2035,15 +2044,20 @@ void funcGenSHA512(char* pcPlain, char* pcHexFull)
 //		(const pint)    piInitHashPos	- pointer to the initial point in the out of range hash to start deriving ports
 //		(returned pint)	piPort		- pointer to the port to be checked and updated if necessary. Original is not changed if valid.
 //
+// Returns:	(int) status of function: 0 - success, ERR_OVERFLOW, ERR_INVALID_HEX
+//
 int funcUpdateInvalidPort(const int* piPortMin, const int* piPortMax, const char* pcHashOOR, int* piInitHashPos, int* piPort)
 {
+	// If the OTP generated is outside of the range of valid ports, then we need to create a random one within the range.
 	if ( (*piPort < *piPortMin) || (*piPort > *piPortMax) )
 	{
+		// Calculate the range we got to work with.
 		int iPortDiff = *piPortMax - *piPortMin;
 		int iLenPortDiff = funcLenInt(&iPortDiff);
 		int iI;
 		int iaPortDiff[iLenPortDiff];
 
+		// Split the range we got to work with into an array so we can randomise each digit but keep it in range
 		for (iI = (iLenPortDiff - 1); iI >= 0; iI--, iPortDiff /= 10)
 		{
 			iaPortDiff[iI] = iPortDiff % 10;
@@ -2051,37 +2065,49 @@ int funcUpdateInvalidPort(const int* piPortMin, const int* piPortMax, const char
 
 		int iPort = 0;
 
+		// Loop round each digit in the range we got to work with and generate
+		// a new random port that is within the valid range.
 		for (iI = 0; iI < iLenPortDiff; iI++)
 		{
 			// We add one to the value of the current digit to ensure the divisor in the MOD calculation below
 			// is not zero.
 			int iDiffVal = iaPortDiff[iI] + 1;
 
+			// Only need to return one character from the Out Of Range (OOR) hash
+			// (a different part of the overall hash to minimise clashes).
 			int iLenOffset = 1;
 
+			// Grab one character of the OOR hash starting from the right hand side.
 			char cOffset[iLenOffset + 1];
 			bzero(cOffset, iLenOffset + 1);
 			strncpy(cOffset, pcHashOOR+( strlen(pcHashOOR) + *piInitHashPos ), 1);
 			cOffset[iLenOffset] = '\0';
 
+			// Convert the hex character to an interger so we can use it in the port generation.
 			int iOffset = 0;
 			funcHex2Int(cOffset, &iOffset);
+			// Error check.
 			if (iOffset < 0) return iOffset;
 
+			// Do not need the character anymore.
 			bzero(cOffset, iLenOffset + 1);
 
-			// Generate the random digit for port at position iI
+			// Generate the random digit for port at position iI. We mod with the difference
+			// between max and min ports at this particular digit position to ensure the
+			// randomlu generated port falls within the valid range.
 			int iMod = iOffset % iDiffVal;
 
 			// Update the port number with the new random digit
 			iPort = (10 * iPort) + iMod;
 
-			// Move the initial hash position back one character
+			// Move the position of where we are grabbing the next character from
+			// the OOR hash back one character (remember it is from the right).
 			*piInitHashPos -= iLenOffset;
 		}
 
-		// Add the minimum port to the random port generated
+		// Add the minimum port to the random port generated above.
 		iPort += *piPortMin;
+		// Return either the original port or the new generated port.
 		*piPort = iPort;
 	}
 
@@ -2106,68 +2132,106 @@ int funcParseDbl2OTP(const double* pdOTP, const char* pcHashOOR, const int* piNu
 {
 	int iI;
 	int iLenD = funcLenDbl(pdOTP);
+	// Char array to hold the double of the One Time Ports (OTP).
 	char cOTP[iLenD];
 	bzero(cOTP, iLenD);
 
+	// The length of a valid single port representation with the OTP double.
+	//
+	// The structure of the OTP double is as such:
+	//
+	// a) Proto
+	// |
+	// |/- b) TCP control bits
+	// ||
+	// ||/- c)Port (TCP and UDP ports / ICMP control bits)
+	// |||
+	// |||	  abc
+	// |||    |||
+	// 65171076451939....
+	// 65171076451939....
 	int iLenSingleOTP = LEN_SINGLE_OTP;
 
+	// If however we are not automatically deriving the Protocol and/or Protocol Flags
+	// and it is manually set during the configuration, we need to retrieve LEN_PROTO
+	// and/or LEN_PROTO_FLAGS less characters.
 	if (*piProto >= 0) iLenSingleOTP -= LEN_PROTO;
 	if (*piProtoFlags >= 0) iLenSingleOTP -= LEN_PROTO_FLAGS;
 
+	// Convert the whole OTP double to a char array for parsing.
 	funcDbl2Char(pdOTP, &iLenD, cOTP);
 
+	// String parsing initial starting position based on the initial one set in the
+	// configuration for the knock.
 	int iInitOORHashPos = *piInitHashPos;
 
+	// Loop based on the number of ports we are supposed to automatically generate
+	// based on the configuration for the knock.
 	for (iI = 0; iI < *piNumPorts; iI++)
 	{
-		// Retrieve the protocol, protocol flags and port from the OTP double.
+		// char array to hold the single OTP representation.
 		char cSingleOTP[iLenSingleOTP + 1];
 		bzero(cSingleOTP, iLenSingleOTP + 1);
 
+		// Retrieve the single OTP representation from the complete OTP.
 		strncpy(cSingleOTP, cOTP+(iI * iLenSingleOTP), iLenSingleOTP);
 		cSingleOTP[iLenSingleOTP] = '\0';
 
+		// Initialise the individual attributes of the single OTP representation.
 		char cPort[LEN_PORT + 1];
 		char cProto[LEN_PROTO + 1];
 		char cProtoFlags[LEN_PROTO_FLAGS + 1];
+		int iPort = 0;
+		int iProtoRaw = 0;
+		int iProtoFlagsRaw = 0;
 		bzero(cPort, LEN_PORT + 1);
 		bzero(cProto, LEN_PROTO + 1);
 		bzero(cProtoFlags, LEN_PROTO_FLAGS + 1);
 
+		// Position indicator as to where we substring the next piece from the char array
+		// version of the complete OTP.
 		int iStartPos = 0;
 
+		// If the Protocol config for the knock was not set, we all use the first
+		// character in the single OTP representation to determine the Protocol.
 		if (*piProto < 0)
 		{
 			strncpy(cProto, cSingleOTP+iStartPos, LEN_PROTO);
 			cProto[LEN_PROTO] = '\0';
+			funcChar2Int(cProto, &iProtoRaw);
+			bzero(cProto, LEN_PROTO + 1);
 			iStartPos += LEN_PROTO;
 		}
 
+		// If the Protocol Flag config for the knock was not set, we all use the first
+		// character in the single OTP representation to determine the Protocol Flag.
 		if (*piProtoFlags < 0)
 		{
 			strncpy(cProtoFlags, cSingleOTP+iStartPos, LEN_PROTO_FLAGS);
 			cProtoFlags[LEN_PROTO_FLAGS] = '\0';
+			funcChar2Int(cProtoFlags, &iProtoFlagsRaw);
+			bzero(cProtoFlags, LEN_PROTO_FLAGS + 1);
 			iStartPos += LEN_PROTO_FLAGS;
 		}
 
+		// Separate out the port to be used.
 		strncpy(cPort, cSingleOTP+iStartPos, LEN_PORT);
 		cPort[LEN_PORT] = '\0';
+		funcChar2Int(cPort, &iPort);
 
-		int iSingleOTP;
-		funcChar2Int(cSingleOTP, &iSingleOTP);
+		// No need for the char single OTP representation.
 		bzero(cSingleOTP, iLenSingleOTP);
 
-		int iPort = 0;
-		int iProtoRaw = 0;
-		int iProtoFlagsRaw = 0;
-		funcChar2Int(cPort, &iPort);
-		funcChar2Int(cProto, &iProtoRaw);
-		funcChar2Int(cProtoFlags, &iProtoFlagsRaw);
-
-		int iProto = iProtoRaw % KNOCK_SUPP_PROTOS;
+		// Calculate the final individual attributes for Protocol and Protocol FLags.
+		// Only need valid protocol numbers - convert to a base 2 number.
+		int iProto = ( iProtoRaw % KNOCK_SUPP_PROTOS );
 		int iProtoFlags = 0;
+		// If the protocol doesn't support flags, need to set the mod value to 1 so we
+		// always return 0 for the protocol flags attribute.
 		int iPFMod = 1;
 
+		// Set the appropriate mod value to produce valid flag combinations depending on
+		// the supported protocol generated.
 		if (iProto == KNOCK_PROTO_TCP) iPFMod = FLAG_SUPP_TCP;
 		else if (iProto == KNOCK_PROTO_ICMP) iPFMod = FLAG_SUPP_ICMP;
 
@@ -2177,6 +2241,7 @@ int funcParseDbl2OTP(const double* pdOTP, const char* pcHashOOR, const int* piNu
 		int iRet = funcUpdateInvalidPort(piPortMin, piPortMax, pcHashOOR, &iInitOORHashPos, &iPort);
 		if (iRet < 0) return iRet;
 
+		// Update the array of single port structs to contain the individual attributes.
 		ptpdaPorts[iI].usPort = iPort;
 		ptpdaPorts[iI].usProto = (int) pow(FLAG_ENC_BASE, iProto);
 		ptpdaPorts[iI].usProtoFlags = (int) pow(FLAG_ENC_BASE, iProtoFlags);
@@ -2186,7 +2251,14 @@ int funcParseDbl2OTP(const double* pdOTP, const char* pcHashOOR, const int* piNu
 }
 
 //
-// funcGenOTP - Generates the list of one time ports
+// funcGenOTP - Generates the list of valid one time ports using a hashed shared secret password and the current UTC time
+//		based on the rotation policy set.
+//
+//		I bzero alot here to ensure the smallest amount of time that 'in the clear' variables are in memory for.
+//
+//		The hashing algorithm you use needs to be able to support the number of ports you are allowed to generate.
+//		For example, SHA512 will allow you to generate 22 ports with random protocols and protocol flags.
+//		If you want more, disable random protocol and/or protocol flags to support 26 or 30 ports respectively.
 //
 // Inputs:	(const pchar)      pcHashPasswd		- pointer to already hashed passord to use in the hash generation (as this should be done one time at configuration read)
 //		(const pint)       piNumPorts		- pointer to the number of ports to be generated
@@ -2202,6 +2274,8 @@ int funcParseDbl2OTP(const double* pdOTP, const char* pcHashOOR, const int* piNu
 //
 int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTPRotate, const int* piInitHashPos, const int* piPortMin, const int* piPortMax, const int* piProto, const int* piProtoFlags, tDoorPort* ptdpaPorts)
 {
+	// Gets the current UTC based time slot given the rotation policy set.
+	// Need it in a char array in order to generate the hash.
 	int iTimeSlotStart = funcGetTimeSlotStart(piOTPRotate);
 	int iLenTimeSlotStart = funcLenInt(&iTimeSlotStart);
 	char cTimeSlotStart[iLenTimeSlotStart + 1];
@@ -2211,6 +2285,7 @@ int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTP
 	char cHashTimeSlotStart[giDigestHexLen];
 	bzero(cHashTimeSlotStart, giDigestHexLen);
 
+	// Generate the hash of the time slot we are in.
 	funcGenSHA512(cTimeSlotStart, cHashTimeSlotStart);
 	bzero(cTimeSlotStart, sizeof(cTimeSlotStart));
 
@@ -2219,6 +2294,7 @@ int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTP
 	char cHashConcat[iLenConcat];
 	bzero(cHashConcat, iLenConcat);
 
+	// Concatenate the hashed password and hashed time slot into a single char array.
 	strncpy(cHashConcat, pcHashPasswd, giDigestHexLen);
 	strncat(cHashConcat, cHashTimeSlotStart, giDigestHexLen);
 	cHashConcat[iLenConcat - 1] = '\0';
@@ -2228,10 +2304,13 @@ int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTP
 	char cHashOTPInit[giDigestHexLen];
 	bzero(cHashOTPInit, giDigestHexLen);
 
+	// Generate the hash of the combined password and time slot hashes
 	funcGenSHA512(cHashConcat, cHashOTPInit);
 	bzero(cHashConcat, sizeof(cHashConcat));
 
-	// Get the starting position integer to know where to randomly pick part of the OTP hash to be used in OOR generation.
+	// Get the character we will use to determine the starting position for parsing the OTP portion
+	// from the right most character of the hash to know where to randomly pick part of the OTP hash
+	// to be used in OOR generation.
 	int iLenOTPStartPos = 2;
 	char cOTPStartPos[iLenOTPStartPos];
 	bzero(cOTPStartPos, iLenOTPStartPos);
@@ -2239,8 +2318,10 @@ int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTP
 	strncpy(cOTPStartPos, cHashOTPInit+(giDigestLen + *piInitHashPos), 1);
 	cOTPStartPos[iLenOTPStartPos - 1] = '\0';
 
+	// Convert the character of the starting position to an integer.
 	int iOTPStartPos = 0;
 	funcHex2Int(cOTPStartPos, &iOTPStartPos);
+	// Error checking.
 	if (iOTPStartPos < 0) return iOTPStartPos;
 
 	bzero(cOTPStartPos, iLenOTPStartPos);
@@ -2254,11 +2335,13 @@ int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTP
 	strncpy(cHashOTP, cHashOTPInit+iOTPStartPos, iLenOTPHash);
 	cHashOTP[iLenOTPHash - 1] = '\0';
 
-	// From the right most side of the hash, retrieve the a large enough chunk to be used in randomly generating new ports for those which were found to be OOR
+	// From the right most side of the hash, retrieve a large enough chunk to be used in
+	// randomly generating new ports for those which were found to be OOR
 	int iLenPorts = (*piNumPorts * 5) + 1;
 	char cHashOOR[iLenPorts];
 	bzero(cHashOOR, iLenPorts);
 
+	// Take a copy of the hash as we need to substring another part for OOR port generation.
 	char cHashOTPInit2[giDigestHexLen];
 	bzero(cHashOTPInit2, giDigestHexLen);
 	strncpy(cHashOTPInit2, cHashOTPInit+0, giDigestHexLen);
@@ -2273,12 +2356,16 @@ int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTP
 	// Now need to convert the hex string to a double
 	double dOTP;
 	funcHex2Dbl(cHashOTP, &dOTP);
+	// Error checking.
 	if (dOTP < 0) return (int) dOTP;
 
 	// Empty the hash as we don't need it anymore
 	bzero(cHashOTP, sizeof(cHashOTP));
 
+	// New we have the double representation of the OTP sequence, we need to parse it into separate
+	// port, protocol and protocol flag components based on the knock configuration.
 	int iRet = funcParseDbl2OTP(&dOTP, cHashOOR, piNumPorts, piInitHashPos, piPortMin, piPortMax, piProto, piProtoFlags, ptdpaPorts);
+	// Error checking.
 	if (iRet < 0) return iRet;
 
 	return 0;
