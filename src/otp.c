@@ -19,7 +19,10 @@
  */
 
 #include <float.h>
+#include <limits.h>
 #include <math.h>
+#include <string.h>
+#include <time.h>
 #include <openssl/bio.h>
 #include <openssl/buffer.h>
 #include <openssl/evp.h>
@@ -38,6 +41,9 @@
 #define KNOCK_PROTO_DYN		-1
 
 // Global constants
+extern const int TRUE;
+extern const int FALSE;
+
 const int  giDigestLen = SHA512_DIGEST_LENGTH;
 const char gcMapHex[] = "0123456789abcdefABCDEF";
 
@@ -52,7 +58,7 @@ const int  giDigestHexLen = (giDigestLen * 2) + 1;
 //
 int funcGetTimeUTC(void)
 {
-	int iTime = (int)time(NULL);
+	int iTime = (int) time(NULL);
 	return iTime;
 }
 
@@ -635,7 +641,7 @@ int funcGenOTP(const char* pcHashPasswd, const int* piNumPorts, const int* piOTP
 	char cHashOTPInit2[giDigestHexLen];
 	bzero(cHashOTPInit2, giDigestHexLen);
 	strncpy(cHashOTPInit2, cHashOTPInit+0, giDigestHexLen);
-	cHashOTPInit2[giDigestHexLen] = '\0';
+	cHashOTPInit2[giDigestHexLen - 1] = '\0';
 
 	strncpy(cHashOOR, cHashOTPInit2+( giDigestHexLen + ( ( *piInitHashPos - ( iLenPorts - 1 ) ) - 1 ) ), iLenPorts);
 	cHashOOR[iLenPorts - 1] = '\0';

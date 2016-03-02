@@ -68,36 +68,6 @@ extern int daemon(int, int);
 
 static char version[] = "0.8.0";
 
-// Values for describing various protocol flags
-#define FLAG_ENC_BASE		2
-#define FLAG_SUPP_TCP		6
-#define FLAG_SUPP_ICMP		7
-#define FLAG_TCP_SYN		1
-#define FLAG_TCP_ACK		2
-#define FLAG_TCP_PSH		4
-#define FLAG_TCP_URG		8
-#define FLAG_TCP_FIN		16
-#define FLAG_TCP_RST		32
-#define FLAG_ICMP_ECHO		1
-#define FLAG_ICMP_REPLY		2
-#define FLAG_ICMP_DESTUNREACH	4
-#define FLAG_ICMP_REDIRECT	8
-#define FLAG_ICMP_TIMEEXCEED	16
-#define FLAG_ICMP_TSTAMP	32
-#define FLAG_ICMP_TSTAMPREPLY	64
-
-#define LEN_PORT		5
-
-// Total of supported protocols (i.e. those defined >= 0)
-#define KNOCK_SUPP_PROTOS	3
-#define KNOCK_PROTO_TCP		0
-#define KNOCK_PROTO_UDP		1
-#define KNOCK_PROTO_ICMP	2
-
-// Global constants
-const int  TRUE  = 1;
-const int  FALSE = 0;
-
 #define SEQ_TIMEOUT		25 /* default knock timeout in seconds */
 #define CMD_TIMEOUT		10 /* default timeout in seconds between start and stop commands */
 #define SEQ_MAX			32 /* maximum number of ports in a knock sequence */
