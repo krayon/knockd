@@ -1,7 +1,7 @@
 /*
  *  knockd.c
  *
- *  Copyright (c) 2004-2012 by Judd Vinet <jvinet@zeroflux.org>
+ *  Copyright (c) 2004-2016 by Judd Vinet <jvinet@zeroflux.org>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -59,7 +59,9 @@
 #include "list.h"
 // This must come before otp.h
 #include "shared_structs.h"
-#include "otp.h"
+#ifdef HAVE_OPENSSL_SHA_H
+	#include "otp.h"
+#endif
 
 #if __APPLE__
 #undef daemon
