@@ -44,7 +44,7 @@
 extern const int TRUE;
 extern const int FALSE;
 
-const int  giDigestLen = SHA512_DIGEST_LENGTH;
+#define giDigestLen SHA512_DIGEST_LENGTH
 const char gcMapHex[] = "0123456789abcdefABCDEF";
 
 const int  giDigestHexLen = (giDigestLen * 2) + 1;

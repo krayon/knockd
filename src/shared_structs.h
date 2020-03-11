@@ -56,7 +56,7 @@ typedef struct doorPort
 #define KNOCK_PROTO_ICMP	2
 
 // Global constants
-const int TRUE = 1;
-const int FALSE = 0;
+extern const int TRUE;
+extern const int FALSE;
 
 #endif

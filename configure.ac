@@ -72,17 +72,14 @@ AS_IF(
 			[ AC_MSG_ERROR( [you need the openssl library to build with one time port support] ) ]
 		)
 		AC_CHECK_HEADERS(
-			[openssl/bio.h openssl/bugfer.h openssl/evp.h openssl/sha.h],
+			[openssl/bio.h openssl/buffer.h openssl/evp.h openssl/sha.h],
 			[openssl_have_headers=1],
 			[ AC_MSG_ERROR( [you need the openssl headers to build with one time port support] ) ]
 		)
 	]
 )
 
-AM_CONDITIONAL(
-	[BUILD_KNOCKD],
-	[test "x$enable_knockd" != "xno"]
-)
+AM_CONDITIONAL([BUILD_KNOCKD], [test "y$enable_knockd" != "yno"])
 
 AC_CONFIG_FILES( [Makefile] )
 
